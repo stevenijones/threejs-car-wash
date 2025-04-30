@@ -264,11 +264,9 @@ function createCar(color) {
         { x: -0.7, z: -0.5 },
         { x: 0.7, z: 0.5 },
         { x: 0.7, z: -0.5 }
-    ];
-
-    wheelPositions.forEach(pos => {
+    ];    wheelPositions.forEach(pos => {
         const wheel = new THREE.Mesh(wheelGeo, wheelMat);
-        wheel.rotation.z = Math.PI / 2;
+        wheel.rotation.x = Math.PI / 2;  // Changed from z to x rotation
         wheel.position.set(pos.x, 0.22, pos.z);
         wheel.castShadow = true;
         car.add(wheel);
