@@ -33,12 +33,26 @@ ground.rotation.x = -Math.PI / 2;
 ground.position.y = 0;
 scene.add(ground);
 
+// Car colors palette
+const carColors = [
+    0xff0000, // Red
+    0x00ff00, // Green
+    0x0000ff, // Blue
+    0xffff00, // Yellow
+    0xff00ff, // Magenta
+    0x00ffff, // Cyan
+    0xff8800, // Orange
+    0x8800ff, // Purple
+    0x00ff88, // Mint
+    0xff0088  // Pink
+];
+
 // --- Car Model ---
-function createCar() {
+function createCar(color) {
     const car = new THREE.Group();
     // Body
     const bodyGeo = new THREE.BoxGeometry(2, 0.6, 1);
-    const bodyMat = new THREE.MeshStandardMaterial({ color: 0xff3333 });
+    const bodyMat = new THREE.MeshStandardMaterial({ color: color });
     const body = new THREE.Mesh(bodyGeo, bodyMat);
     body.position.y = 0.5;
     car.add(body);
@@ -66,16 +80,32 @@ function createCar() {
 
 // Car queue and movement
 
-const car = createCar();
-car.rotation.y = -Math.PI * 1; // Rotate so the car faces positive X (right, 270 degrees)
-scene.add(car);
+const cars = [];
+const carSpawnInterval = 300; // Spawn a car every 5 seconds (assuming ~60fps)
+let carSpawnTimer = 0;
 
+function spawnCar() {
+    // Pick a random color from our palette
+    const randomColor = carColors[Math.floor(Math.random() * carColors.length)];
+    const car = createCar(randomColor);
+    car.rotation.y = -Math.PI * 1; // Rotate so the car faces positive X (right, 270 degrees)
+    scene.add(car);
 
-// Car comes in from the left (X axis)
-const queueStartX = -10; // Start off-screen to the left
-const washEntryX = 0;    // Car wash entry at center
-const carZ = 0;          // Z position for the car wash entry
-car.position.set(queueStartX, 0, carZ);
+    const carObj = {
+        mesh: car,
+        state: 'queue',
+        timer: 0,
+        currentStep: 0,
+        visible: true
+    };
+
+    // Car comes in from the left (X axis)
+    const queueStartX = -10; // Start off-screen to the left
+    const carZ = 0;          // Z position for the car wash entry
+    car.position.set(queueStartX, 0, carZ);
+
+    cars.push(carObj);
+}
 
 // Car wash step cubes (wash, dry, wax)
 const stepWidth = 2.5;
@@ -96,32 +126,82 @@ for (let i = 0; i < 3; i++) {
         new THREE.BoxGeometry(stepWidth, stepHeight, stepDepth),
         stepMaterials[i]
     );
-    cube.position.set(washEntryX + (i * stepSpacing) + stepWidth, stepY, carZ);
+    cube.position.set((i * stepSpacing) + stepWidth, stepY, 0);
     scene.add(cube);
     stepCubes.push(cube);
 }
 
-let carState = 'queue'; // 'queue', 'moving', 'in-wash'
-let carTimer = 0;
+// Step positions (center of each cube)
+const stepPositions = [
+    stepCubes[0].position.x,
+    stepCubes[1].position.x,
+    stepCubes[2].position.x
+];
 
-// Animation loop
+// Step durations in frames (assuming ~60fps)
+const stepDurations = [300, 240, 180]; // 5s, 4s, 3s
+
 function animate() {
     requestAnimationFrame(animate);
 
-    // Car movement logic (from left)
-    if (carState === 'queue') {
-        carTimer += 1;
-        if (carTimer > 60) { // Wait ~1 second
-            carState = 'moving';
-        }
-    } else if (carState === 'moving') {
-        if (car.position.x < washEntryX) {
-            car.position.x += 0.08; // Move right
-        } else {
-            car.position.x = washEntryX;
-            carState = 'in-wash';
+    // Spawn new cars at interval
+    carSpawnTimer++;
+    if (carSpawnTimer >= carSpawnInterval) {
+        spawnCar();
+        carSpawnTimer = 0;
+    }
+
+    // Update all cars
+    for (let carObj of cars) {
+        const car = carObj.mesh;
+        if (!carObj.visible) continue;
+
+        if (carObj.state === 'queue') {
+            carObj.timer++;
+            if (carObj.timer > 60) {
+                carObj.state = 'moving';
+            }
+        } else if (carObj.state === 'moving') {
+            const targetX = stepPositions[0];
+            if (car.position.x < targetX) {
+                car.position.x += 0.08;
+            } else {
+                car.position.x = targetX;
+                carObj.state = 'step1';
+                carObj.timer = 0;
+                carObj.currentStep = 0;
+            }
+        } else if (carObj.state.startsWith('step')) {
+            carObj.timer++;
+            const stepIdx = carObj.currentStep;
+            if (carObj.timer > stepDurations[stepIdx]) {
+                if (stepIdx < 2) {
+                    carObj.state = 'moveToStep' + (stepIdx + 2);
+                } else {
+                    carObj.state = 'done';
+                }
+                carObj.timer = 0;
+            }
+        } else if (carObj.state.startsWith('moveToStep')) {
+            const nextStep = parseInt(carObj.state.replace('moveToStep', '')) - 1;
+            const targetX = stepPositions[nextStep];
+            if (car.position.x < targetX) {
+                car.position.x += 0.08;
+            } else {
+                car.position.x = targetX;
+                carObj.state = 'step' + (nextStep + 1);
+                carObj.timer = 0;
+                carObj.currentStep = nextStep;
+            }
+        } else if (carObj.state === 'done') {
+            car.position.x += 0.12;
+            if (car.position.x > stepPositions[2] + 10) {
+                car.visible = false;
+                carObj.visible = false;
+            }
         }
     }
+
     renderer.render(scene, camera);
 }
 
