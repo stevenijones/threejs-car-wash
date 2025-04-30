@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { scene, camera, renderer, controls, stepCubes, stepPositions, initEnvironment } from './environment.js';
+import { scene, camera, renderer, controls, stepCubes, stepPositions, initEnvironment, queueSpots } from './environment.js';
 import { updateCarMovements, updateQueuePositions, updateSpawnTimer, spawnCar, cars, stepsOccupied } from './process.js';
 import { isAnimating, updateSimulationTime, log } from './ui.js';
 
@@ -20,10 +20,10 @@ function animate(currentTime) {
     requestAnimationFrame(animate);
     
     try {
-        frameCount++;
+    frameCount++;
         if (frameCount % 60 === 0) {
-            const queuedCars = cars.filter(car => car.state === 'queue');
-            log(`Queue size: ${queuedCars.length}, Steps occupied: ${stepsOccupied.join(',')}`);
+            const occupiedSpots = queueSpots.filter(spot => spot.isOccupied).length;
+            log(`Queue spots occupied: ${occupiedSpots}/5, Steps occupied: ${stepsOccupied.join(',')}`);
         }
 
         // Calculate delta time

@@ -11,6 +11,7 @@ export let controls;
 
 export const stepCubes = [];
 export const stepPositions = [];
+export const queueSpots = [];
 
 export function initEnvironment(container) {
     // Scene setup
@@ -68,9 +69,39 @@ function setupGround() {
     scene.add(ground);
 }
 
+function setupQueueSpots() {
+    const spotWidth = 3;  // Wider than car
+    const spotDepth = 2;  // Deeper than car
+    const spotMaterial = new THREE.MeshStandardMaterial({
+        color: 0x666666,
+        transparent: true,
+        opacity: 0.3,
+        side: THREE.DoubleSide,
+        polygonOffset: true,
+        polygonOffsetFactor: 1,
+        polygonOffsetUnits: 1
+    });
+
+    for (let i = 0; i < 5; i++) {
+        const spotGeo = new THREE.PlaneGeometry(spotWidth, spotDepth);
+        const spot = new THREE.Mesh(spotGeo, spotMaterial);
+        spot.rotation.x = -Math.PI / 2;
+        spot.position.set(-3.5 - (i * (spotWidth + 0.2)), 0.5, 0);  // Slightly above ground
+        scene.add(spot);
+        queueSpots.push({
+            mesh: spot,
+            position: spot.position.x,
+            isOccupied: false
+        });
+    }
+}
+
 function setupCarWash() {
+    // Add queue spots before other elements
+    setupQueueSpots();
+
     // Queue area marking
-    const queueAreaGeo = new THREE.PlaneGeometry(3, 15);
+    const queueAreaGeo = new THREE.PlaneGeometry(20, 10);
     const queueAreaMat = new THREE.MeshStandardMaterial({ 
         color: 0xffff00,
         transparent: true,
@@ -79,11 +110,11 @@ function setupCarWash() {
     });
     const queueArea = new THREE.Mesh(queueAreaGeo, queueAreaMat);
     queueArea.rotation.x = -Math.PI / 2;
-    queueArea.position.set(-3.5, 0.01, 0);
+    queueArea.position.set(-10.5, 0.01, 0);
     scene.add(queueArea);
 
     // Car wash area
-    const washAreaGeo = new THREE.PlaneGeometry(12, 4);
+    const washAreaGeo = new THREE.PlaneGeometry(12, 10);
     const washAreaMat = new THREE.MeshStandardMaterial({ 
         color: 0x00ffff,
         transparent: true,
@@ -125,8 +156,13 @@ function setupLabels() {
     fontLoader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', function (font) {
         const textMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
         
+        // Queue spot numbers
+        queueSpots.forEach((spot, index) => {
+            addFloorText(font, (index + 1).toString(), spot.position, 0.3);
+        });
+        
         // Floor labels
-        addFloorText(font, 'QUEUE HERE', -3.5, 0.4);
+        addFloorText(font, 'QUEUE HERE', -1, 0.4);
         addFloorText(font, 'CAR WASH', 6, 0.6);
         
         // Station labels
@@ -146,9 +182,15 @@ function addFloorText(font, text, x, size) {
     geometry.computeBoundingBox();
     const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color: 0xffffff }));
     mesh.rotation.x = -Math.PI / 2;
-    if (text === 'QUEUE HERE') {
-        mesh.rotation.z = Math.PI / 2;
-        mesh.position.set(x, 0.02, geometry.boundingBox.max.x - geometry.boundingBox.min.x);
+    
+    // Special handling for queue spot numbers
+    if (text.match(/^[1-5]$/)) {
+        mesh.position.set(x, 0.2, 1);  // Position number at front of spot
+    } else if (text === 'QUEUE HERE') {
+        mesh.rotation.z = -Math.PI / 2;
+        mesh.position.set(x, 0.2, -1.75); //geometry.boundingBox.max.x - geometry.boundingBox.min.x);
+    } else if (text === 'CAR WASH') {
+        mesh.position.set(x-2, 0.2, 2.5); //geometry.boundingBox.max.x - geometry.boundingBox.min.x);
     } else {
         mesh.position.set(x - (geometry.boundingBox.max.x - geometry.boundingBox.min.x) / 2, 0.02, -1.5);
     }

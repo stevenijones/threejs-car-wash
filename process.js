@@ -1,4 +1,4 @@
-import { scene } from './environment.js';
+import { scene, queueSpots } from './environment.js';
 import { createCar, carColors } from './models.js';
 import { log } from './ui.js';
 
@@ -18,33 +18,39 @@ export const stepDurations = [300, 240, 180]; // 5s, 4s, 3s
 let carSpawnTimer = 0;
 const carSpawnInterval = 180;
 
-export function getQueuePosition(queueIndex) {
-    return QUEUE_START_X - (queueIndex * QUEUE_SPACING);
+export function findAvailableQueueSpot(queueSpots) {
+    // Find the last empty spot (FIFO queue)
+    for (let i = queueSpots.length - 1; i >= 0; i--) {
+        if (!queueSpots[i].isOccupied) {
+            return i;
+        }
+    }
+    return -1;  // No spots available
 }
 
 export function updateQueuePositions() {
     const queuedCars = cars.filter(car => car.state === 'queue');
+    
+    // Reset spot occupancy
+    queueSpots.forEach(spot => spot.isOccupied = false);
+    
+    // Sort cars by position, from front to back
+    queuedCars.sort((a, b) => b.mesh.position.x - a.mesh.position.x);
+    
+    // Assign cars to spots, starting from the front
     queuedCars.forEach((carObj, index) => {
-        const targetX = getQueuePosition(index);
-        const distance = targetX - carObj.mesh.position.x;
-        if (Math.abs(distance) > 0.01) {
-            const nextPosition = { x: carObj.mesh.position.x + Math.sign(distance) * MOVE_SPEED };
-            let canMove = true;
-            
-            for (const otherCar of cars) {
-                if (otherCar !== carObj && otherCar.visible) {
-                    if (checkCollision(nextPosition, otherCar.mesh.position)) {
-                        canMove = false;
-                        break;
-                    }
-                }
-            }
-            
-            if (canMove) {
+        // Each car should try to move to spot[index]
+        const targetSpot = queueSpots[index];
+        if (targetSpot) {
+            const distance = targetSpot.position - carObj.mesh.position.x;
+            if (Math.abs(distance) > 0.01) {
+                // Move towards the target spot
                 carObj.mesh.position.x += Math.sign(distance) * MOVE_SPEED;
+            } else {
+                // Reached the target spot
+                carObj.mesh.position.x = targetSpot.position;
+                targetSpot.isOccupied = true;
             }
-        } else {
-            carObj.mesh.position.x = targetX;
         }
     });
 }
@@ -56,13 +62,14 @@ function checkCollision(car1Position, car2Position) {
 
 export function spawnCar() {    
     try {
-        const queuedCars = cars.filter(car => car.state === 'queue');
-        if (queuedCars.length >= MAX_QUEUE_SIZE) {
+        // Find first available queue spot from back to front
+        const availableSpotIndex = findAvailableQueueSpot(queueSpots);
+        if (availableSpotIndex === -1) {
             log('Queue is full, waiting...', 'info');
             return;
         }
 
-        const spawnPosition = getQueuePosition(queuedCars.length);
+        const spawnPosition = queueSpots[availableSpotIndex].position;
         const randomColor = carColors[Math.floor(Math.random() * carColors.length)];
         const car = createCar(randomColor);
         car.rotation.y = -Math.PI * 1;
@@ -101,10 +108,11 @@ export function updateCarMovements(deltaTime, stepCubes, stepPositions) {
 
         switch (carObj.state) {
             case 'queue':
-                const queuedCars = cars.filter(car => car.state === 'queue');
-                if (queuedCars[0] === carObj && !stepsOccupied[0]) {
+                // Check if this car is in spot 1 (front of queue)
+                if (Math.abs(carObj.mesh.position.x - queueSpots[0].position) < 0.01 && !stepsOccupied[0]) {
                     carObj.state = 'moving';
                     carObj.timer = 0;
+                    queueSpots[0].isOccupied = false;
                 }
                 break;
 
