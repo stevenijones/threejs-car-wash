@@ -31,10 +31,50 @@ window.addEventListener('unhandledrejection', function(e) {
 
 log('Three.js Version: ' + THREE.REVISION);
 
+// Car dimensions for collision detection
+const CAR_LENGTH = 2;  // Length of car body
+const CAR_WIDTH = 1.2;  // Width of car body
+const MIN_CAR_SPACING = 0.5;  // Minimum space between cars
+
 // Initialize global constants
-const queueStartX = -15; // Start further off-screen to the left
-const carZ = 0;          // Z position for the car wash entry
+const QUEUE_START_X = -5;  // Start position of first car in queue
+const carZ = 0;         // Z position for the car wash entry
+const QUEUE_SPACING = CAR_LENGTH + MIN_CAR_SPACING * 2; // Increased spacing between queued cars
+const MAX_QUEUE_SIZE = 5;  // Maximum number of cars in queue
 const fontLoader = new FontLoader();
+
+function getQueuePosition(queueIndex) {
+    return QUEUE_START_X - (queueIndex * QUEUE_SPACING);
+}
+
+function updateQueuePositions() {
+    // Update positions of all cars in queue
+    const queuedCars = cars.filter(car => car.state === 'queue');
+    queuedCars.forEach((carObj, index) => {
+        const targetX = getQueuePosition(index);
+        const distance = targetX - carObj.mesh.position.x;
+        if (Math.abs(distance) > 0.01) {
+            // Check for collisions before moving
+            const nextPosition = { x: carObj.mesh.position.x + Math.sign(distance) * MOVE_SPEED };
+            let canMove = true;
+            
+            for (const otherCar of cars) {
+                if (otherCar !== carObj && otherCar.visible) {
+                    if (checkCollision(nextPosition, otherCar.mesh.position)) {
+                        canMove = false;
+                        break;
+                    }
+                }
+            }
+            
+            if (canMove) {
+                carObj.mesh.position.x += Math.sign(distance) * MOVE_SPEED;
+            }
+        } else {
+            carObj.mesh.position.x = targetX;
+        }
+    });
+}
 
 // Scene setup with enhanced visibility
 log('Creating scene...');
@@ -112,7 +152,7 @@ const queueAreaMat = new THREE.MeshStandardMaterial({
 });
 const queueArea = new THREE.Mesh(queueAreaGeo, queueAreaMat);
 queueArea.rotation.x = -Math.PI / 2;
-queueArea.position.set(queueStartX + 1.5, 0.01, 0); // Slightly above ground to prevent z-fighting
+queueArea.position.set(QUEUE_START_X + 1.5, 0.01, 0); // Slightly above ground to prevent z-fighting
 scene.add(queueArea);
 
 // Car wash area marking (includes all three steps)
@@ -165,10 +205,9 @@ fontLoader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.
     });
     queueFloorGeo.computeBoundingBox();
     const queueFloorWidth = queueFloorGeo.boundingBox.max.x - queueFloorGeo.boundingBox.min.x;
-    const queueFloorText = new THREE.Mesh(queueFloorGeo, floorTextMat);
-    queueFloorText.rotation.x = -Math.PI / 2;
+    const queueFloorText = new THREE.Mesh(queueFloorGeo, floorTextMat);    queueFloorText.rotation.x = -Math.PI / 2;
     queueFloorText.rotation.z = Math.PI / 2;
-    queueFloorText.position.set(queueStartX + 1.5, 0.02, queueFloorWidth/2);
+    queueFloorText.position.set(QUEUE_START_X + 1.5, 0.02, queueFloorWidth/2);
     scene.add(queueFloorText);
     
     // Car wash area text
@@ -216,9 +255,8 @@ fontLoader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.
     // Center the queue text
     queueGeometry.computeBoundingBox();
     const queueWidth = queueGeometry.boundingBox.max.x - queueGeometry.boundingBox.min.x;
-    const queueText = new THREE.Mesh(queueGeometry, textMaterial);
-    queueText.position.set(
-        queueStartX + 1, // Slightly ahead of the queue start position
+    const queueText = new THREE.Mesh(queueGeometry, textMaterial);    queueText.position.set(
+        QUEUE_START_X + 1, // Slightly ahead of the queue start position
         stepHeight + 0.3, // Same height as other labels
         0 // Same Z as other labels
     );
@@ -275,6 +313,12 @@ function createCar(color) {
     return car;
 }
 
+function checkCollision(car1Position, car2Position) {
+    // Check if two cars are too close to each other
+    const distance = car1Position.x - car2Position.x;
+    return Math.abs(distance) < (CAR_LENGTH + MIN_CAR_SPACING);
+}
+
 // Car colors palette
 const carColors = [
     0xff0000, // Red
@@ -291,7 +335,7 @@ const carColors = [
 
 // Car queue and movement
 const cars = [];
-const carSpawnInterval = 300; // Spawn a car every 5 seconds (assuming ~60fps)
+const carSpawnInterval = 180; // Spawn a car every 3 seconds (assuming ~60fps)
 let carSpawnTimer = 0;
 
 // Step positions (center of each cube)
@@ -310,8 +354,18 @@ const stepsOccupied = [false, false, false];
 // Spawn first car immediately
 spawnCar();
 
-function spawnCar() {
+function spawnCar() {    
     try {
+        // Check if queue is full
+        const queuedCars = cars.filter(car => car.state === 'queue');
+        if (queuedCars.length >= MAX_QUEUE_SIZE) {
+            log('Queue is full, waiting...', 'info');
+            return;
+        }
+
+        // Calculate spawn position at back of queue
+        const spawnPosition = getQueuePosition(queuedCars.length);
+
         const randomColor = carColors[Math.floor(Math.random() * carColors.length)];
         const car = createCar(randomColor);
         car.rotation.y = -Math.PI * 1;
@@ -323,15 +377,41 @@ function spawnCar() {
             timer: 0,
             currentStep: 0,
             visible: true
-        };
-
-        car.position.set(queueStartX, 0, carZ);
+        };        car.position.set(spawnPosition, 0, carZ);
         cars.push(carObj);
-        log(`Car spawned at position (${queueStartX}, 0, ${carZ})`);
+        log(`Car spawned at position (${spawnPosition}, 0, ${carZ})`);
     } catch (error) {
         log(`Error spawning car: ${error.message}`, 'error');
     }
 }
+
+// Animation state
+let isAnimating = true;
+
+// Get control buttons
+const playButton = document.getElementById('playButton');
+const pauseButton = document.getElementById('pauseButton');
+
+// Button event listeners
+playButton.addEventListener('click', () => {
+    isAnimating = true;
+    playButton.disabled = true;
+    pauseButton.disabled = false;
+    log('Animation resumed', 'info');
+    lastTime = performance.now();  // Reset time to prevent jump
+    animate(lastTime);
+});
+
+pauseButton.addEventListener('click', () => {
+    isAnimating = false;
+    playButton.disabled = false;
+    pauseButton.disabled = true;
+    log('Animation paused', 'info');
+});
+
+// Initial button states
+playButton.disabled = true;  // Start with play disabled since animation auto-starts
+pauseButton.disabled = false;
 
 // Animation constants
 const MOVE_SPEED = 0.05;
@@ -339,13 +419,16 @@ let lastTime = 0;
 let frameCount = 0;
 
 function animate(currentTime) {
-    requestAnimationFrame(animate);
-
-    try {
+    if (!isAnimating) return;
+    requestAnimationFrame(animate);    try {
         frameCount++;
         if (frameCount % 60 === 0) { // Log every second
-            log(`Active cars: ${cars.length}, Steps occupied: ${stepsOccupied.join(',')}`);
+            const queuedCars = cars.filter(car => car.state === 'queue');
+            log(`Queue size: ${queuedCars.length}, Steps occupied: ${stepsOccupied.join(',')}`);
         }
+
+        // Update queue positions
+        updateQueuePositions();
 
         // Calculate delta time for smooth animation
         const deltaTime = currentTime - lastTime;
@@ -375,12 +458,11 @@ function animate(currentTime) {
                 scene.remove(car);
                 cars.splice(i, 1);
                 continue;
-            }
-
-            switch (carObj.state) {
+            }            switch (carObj.state) {
                 case 'queue':
-                    carObj.timer++;
-                    if (carObj.timer > 60) {
+                    // Only the first car in queue can move to the wash
+                    const queuedCars = cars.filter(car => car.state === 'queue');
+                    if (queuedCars[0] === carObj && !stepsOccupied[0]) {
                         carObj.state = 'moving';
                         carObj.timer = 0;
                     }
@@ -388,12 +470,24 @@ function animate(currentTime) {
 
                 case 'moving':
                     if (!stepsOccupied[0]) {
-                        const targetX = stepPositions[0];
-                        if (car.position.x < targetX) {
-                            car.position.x += MOVE_SPEED * deltaTime;
-                        } else {
-                            car.position.x = targetX;
-                            carObj.state = 'step1';
+                        const targetX = stepPositions[0];                    // Check for collisions with other cars
+                    let canMove = true;
+                    const nextPosition = { x: car.position.x + MOVE_SPEED * deltaTime };
+                    
+                    for (const otherCar of cars) {
+                        if (otherCar !== carObj && otherCar.visible) {
+                            if (checkCollision(nextPosition, otherCar.mesh.position)) {
+                                canMove = false;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (canMove && car.position.x < targetX) {
+                        car.position.x += MOVE_SPEED * deltaTime;
+                    } else if (car.position.x >= targetX) {
+                        car.position.x = targetX;
+                        carObj.state = 'step1';
                             carObj.timer = 0;
                             carObj.currentStep = 0;
                             stepsOccupied[0] = true;
@@ -436,10 +530,22 @@ function animate(currentTime) {
                 case 'moveToStep3':
                     const nextStep = parseInt(carObj.state.replace('moveToStep', '')) - 1;
                     const targetX = stepPositions[nextStep];
+                      // Check for collisions before moving
+                    let canMove = true;
+                    const nextPosition = { x: car.position.x + MOVE_SPEED * deltaTime };
                     
-                    if (car.position.x < targetX) {
+                    for (const otherCar of cars) {
+                        if (otherCar !== carObj && otherCar.visible) {
+                            if (checkCollision(nextPosition, otherCar.mesh.position)) {
+                                canMove = false;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (canMove && car.position.x < targetX) {
                         car.position.x += MOVE_SPEED * deltaTime;
-                    } else {
+                    } else if (car.position.x >= targetX) {
                         car.position.x = targetX;
                         carObj.state = 'step' + (nextStep + 1);
                         stepsOccupied[nextStep] = true;
@@ -458,6 +564,7 @@ function animate(currentTime) {
             }
         }
 
+        updateQueuePositions();
         renderer.render(scene, camera);
     } catch (error) {
         log(`Animation error: ${error.message}`, 'error');
