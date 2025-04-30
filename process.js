@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { scene, queueSpots } from './environment.js';
 import { createCar, carColors } from './models.js';
 import { log } from './ui.js';
@@ -17,6 +18,7 @@ export const stepsOccupied = [false, false, false];
 export const stepDurations = [300, 240, 180]; // 5s, 4s, 3s
 let carSpawnTimer = 0;
 const carSpawnInterval = 180;
+let nextCarId = 1; // Counter for unique car IDs
 
 export function findAvailableQueueSpot(queueSpots) {
     // Find the last empty spot (FIFO queue)
@@ -39,15 +41,17 @@ export function updateQueuePositions() {
     
     // Assign cars to spots, starting from the front
     queuedCars.forEach((carObj, index) => {
-        // Each car should try to move to spot[index]
         const targetSpot = queueSpots[index];
         if (targetSpot) {
             const distance = targetSpot.position - carObj.mesh.position.x;
-            if (Math.abs(distance) > 0.01) {
+            const POSITION_THRESHOLD = 0.1; // Increased threshold for position snapping
+            
+            if (Math.abs(distance) > POSITION_THRESHOLD) {
                 // Move towards the target spot
-                carObj.mesh.position.x += Math.sign(distance) * MOVE_SPEED;
+                const moveSpeed = Math.min(Math.abs(distance) * 0.1, 0.15); // Variable speed based on distance
+                carObj.mesh.position.x += Math.sign(distance) * moveSpeed;
             } else {
-                // Reached the target spot
+                // Snap to exact position when very close
                 carObj.mesh.position.x = targetSpot.position;
                 targetSpot.isOccupied = true;
             }
@@ -62,7 +66,6 @@ function checkCollision(car1Position, car2Position) {
 
 export function spawnCar() {    
     try {
-        // Find first available queue spot from back to front
         const availableSpotIndex = findAvailableQueueSpot(queueSpots);
         if (availableSpotIndex === -1) {
             log('Queue is full, waiting...', 'info');
@@ -73,6 +76,25 @@ export function spawnCar() {
         const randomColor = carColors[Math.floor(Math.random() * carColors.length)];
         const car = createCar(randomColor);
         car.rotation.y = -Math.PI * 1;
+
+        // Create label for car
+        const canvas = document.createElement('canvas');
+        canvas.width = 64;
+        canvas.height = 32;
+        const context = canvas.getContext('2d');
+        context.fillStyle = 'white';
+        context.font = 'bold 24px Arial';
+        context.textAlign = 'center';
+        context.textBaseline = 'middle';
+        context.fillText(`#${nextCarId}`, 32, 16);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        const labelMaterial = new THREE.SpriteMaterial({ map: texture });
+        const label = new THREE.Sprite(labelMaterial);
+        label.scale.set(1, 0.5, 1);
+        label.position.set(0, 2, 0); // Position above car
+        car.add(label); // Attach label to car
+
         scene.add(car);
 
         const carObj = {
@@ -80,11 +102,13 @@ export function spawnCar() {
             state: 'queue',
             timer: 0,
             currentStep: 0,
-            visible: true
+            visible: true,
+            id: nextCarId // Store the ID
         };
         car.position.set(spawnPosition, 0, 0);
         cars.push(carObj);
-        log(`Car spawned at position (${spawnPosition}, 0, 0)`);
+        log(`Car #${nextCarId} spawned at position (${spawnPosition}, 0, 0)`);
+        nextCarId++; // Increment ID counter
     } catch (error) {
         log(`Error spawning car: ${error.message}`, 'error');
     }
