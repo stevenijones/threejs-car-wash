@@ -8,3 +8,28 @@ body {
     height: 100vh;
     display: block;
 }
+
+#debug-panel {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    background: rgba(0, 0, 0, 0.7);
+    color: #fff;
+    padding: 10px;
+    font-family: monospace;
+    border-radius: 5px;
+    z-index: 1000;
+    max-height: 200px;
+    overflow-y: auto;
+    width: 300px;
+}
+
+#debug-panel p {
+    margin: 2px 0;
+    font-size: 12px;
+    line-height: 1.3;
+}
+
+.error { color: #ff6b6b; }
+.warn { color: #ffd93d; }
+.info { color: #6bff6b; }
