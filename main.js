@@ -65,12 +65,41 @@ function createCar() {
 }
 
 // Car queue and movement
+
 const car = createCar();
+car.rotation.y = -Math.PI * 1; // Rotate so the car faces positive X (right, 270 degrees)
 scene.add(car);
 
-const queueStartZ = 10; // Where the car starts (queue)
-const washEntryZ = 0;   // Where the car enters the wash
-car.position.set(0, 0, queueStartZ);
+
+// Car comes in from the left (X axis)
+const queueStartX = -10; // Start off-screen to the left
+const washEntryX = 0;    // Car wash entry at center
+const carZ = 0;          // Z position for the car wash entry
+car.position.set(queueStartX, 0, carZ);
+
+// Car wash step cubes (wash, dry, wax)
+const stepWidth = 2.5;
+const stepHeight = 2;
+const stepDepth = 2;
+const stepSpacing = 3.5;
+const stepY = stepHeight / 2;
+
+const stepMaterials = [
+    new THREE.MeshStandardMaterial({ color: 0x33aaff, transparent: true, opacity: 0.4 }), // Wash (blue)
+    new THREE.MeshStandardMaterial({ color: 0xffe066, transparent: true, opacity: 0.4 }), // Dry (yellow)
+    new THREE.MeshStandardMaterial({ color: 0xff66cc, transparent: true, opacity: 0.4 })  // Wax (pink)
+];
+
+const stepCubes = [];
+for (let i = 0; i < 3; i++) {
+    const cube = new THREE.Mesh(
+        new THREE.BoxGeometry(stepWidth, stepHeight, stepDepth),
+        stepMaterials[i]
+    );
+    cube.position.set(washEntryX + (i * stepSpacing) + stepWidth, stepY, carZ);
+    scene.add(cube);
+    stepCubes.push(cube);
+}
 
 let carState = 'queue'; // 'queue', 'moving', 'in-wash'
 let carTimer = 0;
@@ -79,17 +108,17 @@ let carTimer = 0;
 function animate() {
     requestAnimationFrame(animate);
 
-    // Car movement logic
+    // Car movement logic (from left)
     if (carState === 'queue') {
         carTimer += 1;
         if (carTimer > 60) { // Wait ~1 second
             carState = 'moving';
         }
     } else if (carState === 'moving') {
-        if (car.position.z > washEntryZ) {
-            car.position.z -= 0.08; // Move forward
+        if (car.position.x < washEntryX) {
+            car.position.x += 0.08; // Move right
         } else {
-            car.position.z = washEntryZ;
+            car.position.x = washEntryX;
             carState = 'in-wash';
         }
     }
