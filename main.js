@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 const container = document.getElementById('scene-container');
 
@@ -17,6 +18,14 @@ camera.position.set(0, 5, 15);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 container.appendChild(renderer.domElement);
+
+// Add orbit controls
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enablePan = false; // Disable panning
+controls.minDistance = 10;  // Set minimum zoom distance
+controls.maxDistance = 30;  // Set maximum zoom distance
+controls.maxPolarAngle = Math.PI / 2 - 0.1; // Prevent camera from going below ground
+controls.target.set(0, 0, 0); // Look at the center of the scene
 
 // Lighting
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
@@ -141,8 +150,14 @@ const stepPositions = [
 // Step durations in frames (assuming ~60fps)
 const stepDurations = [300, 240, 180]; // 5s, 4s, 3s
 
+// Track which steps are occupied
+const stepsOccupied = [false, false, false];
+
 function animate() {
     requestAnimationFrame(animate);
+
+    // Update controls
+    controls.update();
 
     // Spawn new cars at interval
     carSpawnTimer++;
@@ -162,25 +177,36 @@ function animate() {
                 carObj.state = 'moving';
             }
         } else if (carObj.state === 'moving') {
-            const targetX = stepPositions[0];
-            if (car.position.x < targetX) {
-                car.position.x += 0.08;
-            } else {
-                car.position.x = targetX;
-                carObj.state = 'step1';
-                carObj.timer = 0;
-                carObj.currentStep = 0;
+            // Only move to first step if it's not occupied
+            if (!stepsOccupied[0]) {
+                const targetX = stepPositions[0];
+                if (car.position.x < targetX) {
+                    car.position.x += 0.08;
+                } else {
+                    car.position.x = targetX;
+                    carObj.state = 'step1';
+                    carObj.timer = 0;
+                    carObj.currentStep = 0;
+                    stepsOccupied[0] = true;
+                }
             }
         } else if (carObj.state.startsWith('step')) {
             carObj.timer++;
             const stepIdx = carObj.currentStep;
             if (carObj.timer > stepDurations[stepIdx]) {
                 if (stepIdx < 2) {
-                    carObj.state = 'moveToStep' + (stepIdx + 2);
+                    // Only move to next step if it's not occupied
+                    if (!stepsOccupied[stepIdx + 1]) {
+                        stepsOccupied[stepIdx] = false; // Free up current step
+                        carObj.state = 'moveToStep' + (stepIdx + 2);
+                    }
                 } else {
+                    stepsOccupied[stepIdx] = false; // Free up last step
                     carObj.state = 'done';
                 }
-                carObj.timer = 0;
+                if (carObj.state !== 'step' + (stepIdx + 1)) {
+                    carTimer = 0;
+                }
             }
         } else if (carObj.state.startsWith('moveToStep')) {
             const nextStep = parseInt(carObj.state.replace('moveToStep', '')) - 1;
@@ -190,6 +216,7 @@ function animate() {
             } else {
                 car.position.x = targetX;
                 carObj.state = 'step' + (nextStep + 1);
+                stepsOccupied[nextStep] = true;
                 carObj.timer = 0;
                 carObj.currentStep = nextStep;
             }
